@@ -11,5 +11,5 @@ All credit to the above blog for helping me get set up to access my nest's data!
 
 ## Running the script
 
-python nest_ingest.py --project_id <> --access_token <> --refresh_token <> --client_id <> --client_secret <> --fb_user <> --fb_pw <> --fb_db <>
+`python nest_ingest.py --project_id <> --access_token <> --refresh_token <> --client_id <> --client_secret <> --fb_user <> --fb_pw <> --fb_db <>`
 

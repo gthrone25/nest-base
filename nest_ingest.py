@@ -12,6 +12,15 @@ class nestConn():
     """This class is used to make connection to Nest devices
     """
     def __init__(self, project_id, token, refresh_token=None, client_id=None, client_secret=None):
+        """Initialize class
+
+        Args:
+            project_id (string): Nest project id
+            token (string): Nes access token
+            refresh_token (string, optional): Nest refresh token if you want to run for a long period of time. Defaults to None.
+            client_id (string, optional): client id to use refresh token. Defaults to None.
+            client_secret (string, optional): client secret to use refresh token. Defaults to None.
+        """
         self.project_id=project_id
         self.token=token
         self.refresh_token=refresh_token
@@ -23,6 +32,8 @@ class nestConn():
                         }
 
     def renew_token(self):
+        """generate a new token using the refresh token
+        """
         params = (
             ('client_id', self.client_id),
             ('client_secret', self.client_secret),
@@ -41,23 +52,35 @@ class nestConn():
                         }
 
     def print_token(self):
+        """ print current token"""
         print(self.token)
 
 
     def get_devices(self):
+        """Get all of the devices in your nest project
 
+        Returns:
+            List: List of devices under your nest project
+        """
         url_get_devices = 'https://smartdevicemanagement.googleapis.com/v1/enterprises/' + self.project_id + '/devices'
         response = requests.get(url_get_devices, headers=self.headers)
 
         return response.json()
 
     def get_device_stats(self,device_name):
+        """Get the device stats for a single nest device
+
+        Args:
+            device_name (string): device name
+
+        Returns:
+            json: all stats for the passed device
+        """
         url_get_device = 'https://smartdevicemanagement.googleapis.com/v1/' + device_name
         iso_date = datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
         response = requests.get(url_get_device, headers=self.headers)
         response_json = response.json()
         response_json['req_time'] = iso_date
-        #print(response_json)
         return response_json
 
 class featurebaseConn():
@@ -72,7 +95,7 @@ class featurebaseConn():
 
     def featurebase_authenticate(self):
         """A helper function to retrieve an OAuth 2.0 token 'IdToken' which will be
-            used to make authenticated HTTP API calls.
+            used to make authenticated HTTP API calls. Returns the token
         """
 
         # Send HTTP POST request
@@ -97,9 +120,22 @@ class featurebaseConn():
         return token
 
     def use_database(self,database):
+        """Set the database to use with the database id
+
+        Args:
+            database (string): database id
+        """
         self.database=database
 
     def run_query(self,query):
+        """run a sql query against the database in use
+
+        Args:
+            query (string): SQL query to execute
+
+        Returns:
+            json: SQL response
+        """
 
         url  = f'https://query.featurebase.com/{self.api_version}/databases/{self.database}/query/sql'
         body = query.encode('utf-8')
@@ -130,36 +166,52 @@ class featurebaseConn():
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--project_id', type=str, required=True)
-    parser.add_argument('--access_token', type=str, required=True)
-    parser.add_argument('--refresh_token', type=str, required=False)
-    parser.add_argument('--client_id', type=str, required=False)
-    parser.add_argument('--client_secret', type=str, required=False)
+    """Enable CLI runs of this script to constantly (if the refresh token is passed) load nest data into a FeatureBase database
+    """
 
-    parser.add_argument('--fb_user', type=str, required=True)
-    parser.add_argument('--fb_pw', type=str, required=True)
-    parser.add_argument('--fb_db', type=str, required=True)
+    # Add command line args for nest and featurebase
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--project_id', help='Nest Project ID', type=str, required=True)
+    parser.add_argument('--access_token', help='Nest access token for authz', type=str, required=True)
+    #Optional nest args but all must be passed or none. To improve by enforcing later
+    parser.add_argument('--refresh_token', help='Nest refresh token used to generate new access tokens', type=str, required=False)
+    parser.add_argument('--client_id', help='Nest client ID used to generate new access tokens', type=str, required=False)
+    parser.add_argument('--client_secret ', help='Nest client secret used to generate new access tokens', type=str, required=False)
+
+    parser.add_argument('--fb_user', help='FeatureBase username (email)', type=str, required=True)
+    parser.add_argument('--fb_pw', help='FeatureBase password', type=str, required=True)
+    parser.add_argument('--fb_db', help='FeatureBase database id', type=str, required=True)
     args = parser.parse_args()
+
+    # Create a start time to track for token refreshes
     start_time=datetime.now()
+
+    # if the refresh token is passed, create a connection to nest using it
     if args.refresh_token:
         conn = nestConn(args.project_id, args.access_token, args.refresh_token, args.client_id, args.client_secret)
+        conn.renew_token()
     else:
         conn = nestConn(args.project_id, args.access_token)
-    conn.renew_token()
-    conn.print_token()
+
+    # get first device to get stats from    
     devices = conn.get_devices()
     device_0_name = devices['devices'][0]['name']
+
+    #Create featurebase connection
     fb_conn = featurebaseConn(args.fb_user,args.fb_pw)
     fb_conn.use_database(args.fb_db)
     
+    #Continuously run to stream data
     while 1==1:
+        #After 55 minutes of running, get a new token before the old expires. this can only be done if a refresh token is passed
         if datetime.now() >= (start_time+ timedelta(minutes=55)) and not(conn.refresh_token is None):
             start_time=datetime.now()
             conn.renew_token()
             conn.print_token()
             fb_conn.featurebase_authenticate()
+        #Get device stats
         device_stats = conn.get_device_stats(device_0_name)
+        # Create BULK INSERT statment to load data
         sql = f'''BULK INSERT INTO gt-nest-thermo (
             _id, 
             display_name,
@@ -221,8 +273,8 @@ if __name__ == "__main__":
             INPUT 'STREAM'
             ALLOW_MISSING_VALUES;
             '''
+        # Load data
         result = fb_conn.run_query(sql)
         print(result)
-        # google limits deince info to 10 QPM: https://developers.google.com/nest/device-access/project/limits
+        # Rest 6 seconds as google limits device info to 10 QPM: https://developers.google.com/nest/device-access/project/limits
         time.sleep(6)
-

@@ -223,7 +223,7 @@ if __name__ == "__main__":
             eco_heat_max_cel,
             eco_cool_min_cel,
             hvac_status,
-            temp_dispaly_unit,
+            temp_display_unit,
             therm_heat_max_cel,
             therm_cool_min_cel,
             ambient_humidity_pct,

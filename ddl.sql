@@ -9,7 +9,7 @@ eco_mode STRING
 eco_heat_max_cel DECIMAL(6),
 eco_cool_min_cel DECIMAL(6),
 hvac_status STRING,
-temp_dispaly_unit STRING,
+temp_display_unit STRING,
 therm_heat_max_cel DECIMAL(6),
 therm_cool_min_cel DECIMAL(6),
 humidity_pct INT,
